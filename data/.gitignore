@@ -1,5 +1,6 @@
 data_road/
 vgg/
 gtFine_trainvaltest/
-
+*.zip
 vgg16.npy
+
