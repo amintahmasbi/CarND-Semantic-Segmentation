@@ -60,26 +60,26 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
     # TODO: Implement function
-    conv_1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), kernel_initializer= init_ops.zeros_initializer())
+    conv0_1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
-    deconv1_output = tf.layers.conv2d_transpose(conv_1x1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), kernel_initializer= init_ops.zeros_initializer())
+    deconv1_output = tf.layers.conv2d_transpose(conv0_1x1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
-    conv1_1x1 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), kernel_initializer= init_ops.zeros_initializer())
+    conv1_1x1 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
 
-    conv1_1x1 = tf.add(deconv1_output, conv1_1x1)
+    deconv1_output = tf.add(deconv1_output, conv1_1x1)
     
-    deconv2_output = tf.layers.conv2d_transpose(conv1_1x1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), kernel_initializer= init_ops.zeros_initializer())
+    deconv2_output = tf.layers.conv2d_transpose(deconv1_output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
-    conv2_1x1 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), kernel_initializer= init_ops.zeros_initializer())
+    conv2_1x1 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
 
     deconv3_output = tf.add(deconv2_output, conv2_1x1)
     
-    output = tf.layers.conv2d_transpose(deconv3_output, num_classes, 16, strides=(8, 8), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), kernel_initializer= init_ops.zeros_initializer())
+    output = tf.layers.conv2d_transpose(deconv3_output, num_classes, 16, strides=(8, 8), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
-    return output
+#     print_tensor = tf.Print(conv_1x1, [tf.shape(conv_1x1)[1:]])
+    return output #, print_tensor
 
 tests.test_layers(layers)
-
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     """
@@ -98,8 +98,35 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     return logits, train_op, cross_entropy_loss
 tests.test_optimize(optimize)
 
+def mean_iou(correct_label, nn_last_layer, num_classes):
+    """
+    Build the TensorFLow mean IOU and its operation.
+    :param nn_last_layer:TF Tensor of the last layer in the neural network
+    :param correct_label: TF Placeholder for the correct label image
+    :param num_classes: Number of classes to classify
+    :return: Tuple of (iou, iou_op)
+    """
+    # TODO: Use `tf.metrics.mean_iou` to compute the mean IoU.
+    labels = tf.reshape(correct_label, (-1, num_classes))
+    labels = tf.cast(labels,tf.int32)
+#     label_locations = tf.where(tf.equal(labels, 1))
+#     dense_labels = label_locations[:,1]
+    dense_labels = tf.argmax(labels, axis=1)
+    
+    logits = tf.reshape(nn_last_layer, (-1, num_classes))
+    softmax_logits = tf.nn.softmax(logits)
+    predictions = tf.argmax(softmax_logits, axis=1)
 
-def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
+#     pred_locations = tf.where(tf.greater(softmax_logits, 0.5))
+#     predictions = pred_locations[:,1]
+#     predictions = tf.one_hot(tf.nn.top_k(softmax_logits).indices, tf.shape(im_softmax)[0])
+
+
+    iou, iou_op = tf.metrics.mean_iou(dense_labels, predictions, num_classes)
+    
+    return iou, iou_op
+
+def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, iou, iou_op, input_image,
              correct_label, keep_prob, learning_rate):
     """
     Train neural network and print out the loss during training.
@@ -118,16 +145,17 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     for epoch in range(epochs):
         print(epoch)
         for image, label in get_batches_fn(batch_size):
-            sess.run([train_op, cross_entropy_loss],feed_dict = {input_image: image, correct_label: label, keep_prob: 0.8})
+            _, _, loss, IOU = sess.run([train_op, iou_op, cross_entropy_loss, iou],feed_dict = {input_image: image, correct_label: label, keep_prob: 0.8, learning_rate: 1e-3})
+            print(loss, " : ", IOU)
 tests.test_train_nn(train_nn)
 
 
 def run():
     num_classes = 2
     image_shape = (160, 576)
-    learning_rate = 1e-4 # based on FCN-8 paper
+#     learning_rate = 1e-4 # based on FCN-8 paper
     batch_size = 20 # FCN-8 paper
-    epochs = 6
+    epochs = 1
     correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes])
     learning_rate_pl = tf.placeholder(tf.float32)
     data_dir = './data'
@@ -154,10 +182,15 @@ def run():
         input_image, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         nn_last_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
         logits, train_op, cross_entropy_loss = optimize(nn_last_layer, correct_label, learning_rate_pl, num_classes)
+        iou, iou_op = mean_iou(correct_label, nn_last_layer, num_classes)
         # TODO: Train NN using the train_nn function
         sess.run(tf.global_variables_initializer())
-        train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
-             correct_label, keep_prob, learning_rate)
+        # need to initialize local variables for this to run `tf.metrics.mean_iou`
+        sess.run(tf.local_variables_initializer())
+        # TODO: use `mean_iou` to compute the mean IoU
+
+        train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, iou, iou_op, input_image,
+             correct_label, keep_prob, learning_rate_pl)
         # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
 

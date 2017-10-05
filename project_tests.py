@@ -86,7 +86,7 @@ def test_layers(layers):
     vgg_layer3_out = tf.placeholder(tf.float32, [None, None, None, 256])
     vgg_layer4_out = tf.placeholder(tf.float32, [None, None, None, 512])
     vgg_layer7_out = tf.placeholder(tf.float32, [None, None, None, 4096])
-    layers_output = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
+    layers_output  = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
     _assert_tensor_shape(layers_output, [None, None, None, num_classes], 'Layers Output')
 
@@ -121,6 +121,8 @@ def test_train_nn(train_nn):
 
     train_op = tf.constant(0)
     cross_entropy_loss = tf.constant(10.11)
+    iou_op = tf.constant(0)
+    iou = tf.constant(10.11)
     input_image = tf.placeholder(tf.float32, name='input_image')
     correct_label = tf.placeholder(tf.float32, name='correct_label')
     keep_prob = tf.placeholder(tf.float32, name='keep_prob')
@@ -133,6 +135,8 @@ def test_train_nn(train_nn):
             'get_batches_fn': get_batches_fn,
             'train_op': train_op,
             'cross_entropy_loss': cross_entropy_loss,
+            'iou_op': iou_op,
+            'iou': iou,
             'input_image': input_image,
             'correct_label': correct_label,
             'keep_prob': keep_prob,
