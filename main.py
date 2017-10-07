@@ -2,6 +2,9 @@ import os.path
 import tensorflow as tf
 import helper
 import warnings
+import shutil
+import time
+
 from distutils.version import LooseVersion
 import project_tests as tests
 from tensorflow.python.ops import init_ops
@@ -61,23 +64,17 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
     # TODO: Implement function
     conv0_1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
-    
     deconv1_output = tf.layers.conv2d_transpose(conv0_1x1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
     conv1_1x1 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
-
     deconv1_output = tf.add(deconv1_output, conv1_1x1)
-    
     deconv2_output = tf.layers.conv2d_transpose(deconv1_output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
     conv2_1x1 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
-
     deconv3_output = tf.add(deconv2_output, conv2_1x1)
-    
     output = tf.layers.conv2d_transpose(deconv3_output, num_classes, 16, strides=(8, 8), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
     
-#     print_tensor = tf.Print(conv_1x1, [tf.shape(conv_1x1)[1:]])
-    return output #, print_tensor
+    return output
 
 tests.test_layers(layers)
 
@@ -93,7 +90,11 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     # TODO: Implement function
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
-    train_op = tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy_loss)
+    # Create a variable to track the global step.
+    global_step = tf.Variable(0, name='global_step', trainable=False)
+    # Use the optimizer to apply the gradients that minimize the loss
+    # (and also increment the global step counter) as a single training step.
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy_loss,global_step=global_step)
 
     return logits, train_op, cross_entropy_loss
 tests.test_optimize(optimize)
@@ -109,25 +110,18 @@ def mean_iou(correct_label, nn_last_layer, num_classes):
     # TODO: Use `tf.metrics.mean_iou` to compute the mean IoU.
     labels = tf.reshape(correct_label, (-1, num_classes))
     labels = tf.cast(labels,tf.int32)
-#     label_locations = tf.where(tf.equal(labels, 1))
-#     dense_labels = label_locations[:,1]
     dense_labels = tf.argmax(labels, axis=1)
     
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     softmax_logits = tf.nn.softmax(logits)
     predictions = tf.argmax(softmax_logits, axis=1)
 
-#     pred_locations = tf.where(tf.greater(softmax_logits, 0.5))
-#     predictions = pred_locations[:,1]
-#     predictions = tf.one_hot(tf.nn.top_k(softmax_logits).indices, tf.shape(im_softmax)[0])
-
-
     iou, iou_op = tf.metrics.mean_iou(dense_labels, predictions, num_classes)
     
     return iou, iou_op
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, iou, iou_op, input_image,
-             correct_label, keep_prob, learning_rate):
+             correct_label, keep_prob, learning_rate, summary, summary_writer, saver, output_dir):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -143,10 +137,14 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     """
     # TODO: Implement function
     for epoch in range(epochs):
-        print(epoch)
         for image, label in get_batches_fn(batch_size):
             _, _, loss, IOU = sess.run([train_op, iou_op, cross_entropy_loss, iou],feed_dict = {input_image: image, correct_label: label, keep_prob: 0.8, learning_rate: 1e-3})
-            print(loss, " : ", IOU)
+        print('Epoch: {:<4} - Cost: {:<8.3} Accuracy: {:<5.3}'.format(epoch, loss, IOU))
+        summary_str = sess.run(summary, feed_dict = {input_image: image, correct_label: label, keep_prob: 0.8, learning_rate: 1e-3})
+        summary_writer.add_summary(summary_str, epoch)
+        summary_writer.flush()
+        checkpoint_file = os.path.join(output_dir, 'model.ckpt')
+        saver.save(sess, checkpoint_file, global_step=epoch)
 tests.test_train_nn(train_nn)
 
 
@@ -155,7 +153,7 @@ def run():
     image_shape = (160, 576)
 #     learning_rate = 1e-4 # based on FCN-8 paper
     batch_size = 20 # FCN-8 paper
-    epochs = 1
+    epochs = 50
     correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes])
     learning_rate_pl = tf.placeholder(tf.float32)
     data_dir = './data'
@@ -179,20 +177,47 @@ def run():
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         # TODO: Build NN using load_vgg, layers, and optimize function
+        # OPTINAL: load a half-trained model and fine-tune it
         input_image, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
+                
         nn_last_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
         logits, train_op, cross_entropy_loss = optimize(nn_last_layer, correct_label, learning_rate_pl, num_classes)
+        
+        
+        # Add a scalar summary for the snapshot loss.
+        tf.summary.scalar('loss', cross_entropy_loss)
+
+        # TODO: use `mean_iou` to compute the mean IoU
         iou, iou_op = mean_iou(correct_label, nn_last_layer, num_classes)
-        # TODO: Train NN using the train_nn function
+        tf.summary.scalar('IOU', iou)
+
+        # Build the summary Tensor based on the TF collection of Summaries.
+        summary = tf.summary.merge_all()
+        
+        # Create a saver for writing training checkpoints.
+        saver = tf.train.Saver()
+        
+        # Make folder for current run
+        output_dir = os.path.join(runs_dir, str(time.time()))
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir)
+
+        # Instantiate a SummaryWriter to output summaries and the Graph.
+        summary_writer = tf.summary.FileWriter(output_dir, sess.graph)
+
         sess.run(tf.global_variables_initializer())
         # need to initialize local variables for this to run `tf.metrics.mean_iou`
         sess.run(tf.local_variables_initializer())
-        # TODO: use `mean_iou` to compute the mean IoU
 
+        # TODO: Train NN using the train_nn function
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, iou, iou_op, input_image,
-             correct_label, keep_prob, learning_rate_pl)
+             correct_label, keep_prob, learning_rate_pl, summary, summary_writer, saver, output_dir)
+        
+        # Save a checkpoint and evaluate the model periodically.
+        
         # TODO: Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image, output_dir)
 
         # OPTIONAL: Apply the trained model to a video
 

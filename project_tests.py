@@ -123,10 +123,15 @@ def test_train_nn(train_nn):
     cross_entropy_loss = tf.constant(10.11)
     iou_op = tf.constant(0)
     iou = tf.constant(10.11)
+    summary = tf.summary.scalar('test', tf.constant(0))
+    summary_writer = tf.summary.FileWriter('./tmp')
+    saver = tf.train.Saver(allow_empty=True)
+    
     input_image = tf.placeholder(tf.float32, name='input_image')
     correct_label = tf.placeholder(tf.float32, name='correct_label')
     keep_prob = tf.placeholder(tf.float32, name='keep_prob')
     learning_rate = tf.placeholder(tf.float32, name='learning_rate')
+
     with tf.Session() as sess:
         parameters = {
             'sess': sess,
@@ -140,7 +145,11 @@ def test_train_nn(train_nn):
             'input_image': input_image,
             'correct_label': correct_label,
             'keep_prob': keep_prob,
-            'learning_rate': learning_rate}
+            'learning_rate': learning_rate,
+            'summary': summary,
+            'summary_writer': summary_writer,
+            'saver': saver,
+            'output_dir': './tmp'}
         _prevent_print(train_nn, parameters)
 
 
