@@ -7,8 +7,6 @@ import time
 
 from distutils.version import LooseVersion
 import project_tests as tests
-from tensorflow.python.ops import init_ops
-from click.core import batch
 
 
 # Check TensorFlow Version
@@ -89,7 +87,7 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     """
     # TODO: Implement function
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
-    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label),name='cross_entropy_loss')
     # Create a variable to track the global step.
     global_step = tf.Variable(0, name='global_step', trainable=False)
     # Use the optimizer to apply the gradients that minimize the loss
@@ -153,7 +151,7 @@ def run():
     image_shape = (160, 576)
 #     learning_rate = 1e-4 # based on FCN-8 paper
     batch_size = 20 # FCN-8 paper
-    epochs = 50
+    epochs = 1
     correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes])
     learning_rate_pl = tf.placeholder(tf.float32)
     data_dir = './data'
@@ -210,9 +208,10 @@ def run():
         # need to initialize local variables for this to run `tf.metrics.mean_iou`
         sess.run(tf.local_variables_initializer())
 
+        tf.train.write_graph(sess.graph, output_dir, 'base_graph.pb',as_text=False)
         # TODO: Train NN using the train_nn function
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, iou, iou_op, input_image,
-             correct_label, keep_prob, learning_rate_pl, summary, summary_writer, saver, output_dir)
+            correct_label, keep_prob, learning_rate_pl, summary, summary_writer, saver, output_dir)
         
         # Save a checkpoint and evaluate the model periodically.
         
