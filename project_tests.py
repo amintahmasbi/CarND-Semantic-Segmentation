@@ -105,7 +105,7 @@ def test_optimize(optimize):
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         sess.run([train_op], {correct_label: np.arange(np.prod(shape)).reshape(shape), learning_rate: 10})
-        test, loss = sess.run([layers_output, cross_entropy_loss], {correct_label: np.arange(np.prod(shape)).reshape(shape)})
+        test, cost = sess.run([layers_output, cross_entropy_loss], {correct_label: np.arange(np.prod(shape)).reshape(shape)})
 
     assert test.min() != 0 or test.max() != 0, 'Training operation not changing weights.'
 
@@ -120,7 +120,7 @@ def test_train_nn(train_nn):
         return np.arange(np.prod(shape)).reshape(shape)
 
     train_op = tf.constant(0)
-    cross_entropy_loss = tf.constant(10.11)
+    loss = tf.constant(10.11)
     iou_op = tf.constant(0)
     iou = tf.constant(10.11)
     summary = tf.summary.scalar('test', tf.constant(0))
@@ -139,7 +139,7 @@ def test_train_nn(train_nn):
             'batch_size': batch_size,
             'get_batches_fn': get_batches_fn,
             'train_op': train_op,
-            'cross_entropy_loss': cross_entropy_loss,
+            'loss': loss,
             'iou_op': iou_op,
             'iou': iou,
             'input_image': input_image,
