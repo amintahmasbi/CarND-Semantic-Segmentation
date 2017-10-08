@@ -151,7 +151,7 @@ def run():
     image_shape = (160, 576)
 #     learning_rate = 1e-4 # based on FCN-8 paper
     batch_size = 20 # FCN-8 paper
-    epochs = 1
+    epochs = 50
     correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes])
     learning_rate_pl = tf.placeholder(tf.float32)
     data_dir = './data'
